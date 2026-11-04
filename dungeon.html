@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Подземелье боссов</title>
+<style>
+  :root{
+    --bg:#0b0d16; --panel:#141827; --line:rgba(255,255,255,.08);
+    --muted:#7f88a8; --gold:#ffd166; --red:#ff4d6d; --cyan:#4de1ff; --green:#5dffa3;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; display:flex; justify-content:center; padding:14px;
+    background:
+      radial-gradient(800px 400px at 50% -20%, #1d1440, transparent),
+      radial-gradient(600px 300px at 100% 100%, #131c33, transparent),
+      var(--bg);
+    color:#e9edff; font:14px/1.35 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; user-select:none;
+  }
+  .app{width:100%; max-width:640px; display:flex; flex-direction:column; gap:8px; align-self:flex-start}
+  .app.shake{animation:shake .25s}
+  @keyframes shake{25%{transform:translate(-3px,1px)}50%{transform:translate(2px,-2px)}75%{transform:translate(-1px,2px)}}
+
+  .hud{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 12px; display:flex; flex-direction:column; gap:8px}
+  .hud-top{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .chip{font-size:11.5px; color:var(--muted); background:rgba(255,255,255,.04); border:1px solid var(--line); padding:3px 9px; border-radius:20px; white-space:nowrap}
+  .chip.boss{color:#ffd9a3; border-color:rgba(255,209,102,.3); background:rgba(255,209,102,.07); font-weight:600}
+  .hp-row{display:flex; align-items:center; gap:10px}
+  .hp-outer{position:relative; flex:1; height:18px; border-radius:10px; background:#0a0d17; border:1px solid var(--line); overflow:hidden}
+  .hp-fill{height:100%; width:100%; border-radius:9px; background:linear-gradient(90deg,#ff3d68,#ff7a5c); transition:width .3s, background .3s}
+  .hp-fill.low{background:linear-gradient(90deg,#b8002b,#ff3d68)}
+  .hp-text{position:absolute; inset:0; display:grid; place-items:center; font-size:11px; font-weight:600; color:#fff; text-shadow:0 1px 2px #000}
+  .shield-badge{font-size:12px; color:#8fd6ff; border:1px solid rgba(77,225,255,.35); background:rgba(77,225,255,.08); padding:3px 8px; border-radius:20px; white-space:nowrap}
+  .shield-badge.off{opacity:0}
+  .relics{display:flex; gap:5px; min-height:0}
+  .relic{font-size:15px; width:26px; height:26px; display:grid; place-items:center; border-radius:8px; background:rgba(255,255,255,.05); border:1px solid var(--line); cursor:help}
+
+  .arena{
+    display:grid; grid-template-columns:repeat(11,40px); grid-auto-rows:40px; gap:2px;
+    background:#0a0c14; border:1px solid var(--line); border-radius:14px; padding:8px; justify-content:center;
+  }
+  .cell{
+    position:relative; border-radius:9px; background:linear-gradient(180deg,#1a2033,#151a29);
+    border:1px solid rgba(255,255,255,.04); display:grid; place-items:center;
+    font-size:21px; line-height:1; cursor:pointer; transition:background .12s, box-shadow .12s;
+  }
+  .cell:hover:not(.wall){background:#232b44}
+  .cell.wall{background:linear-gradient(160deg,#2a2f45,#1a1e2e); border-color:rgba(0,0,0,.5); box-shadow:inset 0 2px 0 rgba(255,255,255,.05), inset 0 -3px 6px rgba(0,0,0,.4); cursor:default}
+  .cell .g{position:relative; z-index:2; filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
+  .cell .eb{position:absolute; left:4px; right:4px; bottom:3px; height:3px; border-radius:2px; background:#3b2530; overflow:hidden; z-index:2}
+  .cell .eb::after{content:''; display:block; height:100%; width:inherit}
+  .cell .hpbar{position:absolute; left:4px; right:4px; bottom:3px; height:3px; border-radius:2px; background:rgba(0,0,0,.55); overflow:hidden; z-index:2}
+  .cell .hpbar i{display:block; height:100%; background:linear-gradient(90deg,#ff9f43,#ff4d6d)}
+  .cell.enemy .g{animation:bob 2.4s ease-in-out infinite}
+  @keyframes bob{50%{transform:translateY(-2px)}}
+  .cell.player{background:linear-gradient(180deg,#123449,#0f2436); box-shadow:inset 0 0 0 1px rgba(77,225,255,.5), 0 0 16px rgba(77,225,255,.18)}
+  .cell.player .g{filter:drop-shadow(0 0 7px rgba(77,225,255,.85))}
+  .cell.dash{box-shadow:inset 0 0 0 1px rgba(77,225,255,.45); background:linear-gradient(180deg,#16394f,#122a3d)}
+  .cell.danger::after{
+    content:''; position:absolute; inset:0; border-radius:9px; z-index:1;
+    background:repeating-linear-gradient(45deg, rgba(255,64,90,.30) 0 6px, rgba(255,64,90,.07) 6px 12px);
+    border:1px solid rgba(255,90,110,.55); animation:danger 1.1s infinite;
+  }
+  @keyframes danger{50%{background-color:rgba(255,64,90,.18)}}
+  .cell.enraged{box-shadow:inset 0 0 0 1px rgba(255,120,60,.7), 0 0 14px rgba(255,120,60,.25)}
+  .fx{position:absolute; z-index:3; font-size:13px; font-weight:700; color:#ff8fa3; opacity:0; pointer-events:none; text-shadow:0 1px 3px #000}
+  .fx.show{animation:fxUp .7s ease-out}
+  .fx.heal{color:var(--green)}
+  @keyframes fxUp{0%{opacity:1; transform:translateY(2px) scale(.9)}100%{opacity:0; transform:translateY(-16px) scale(1.15)}}
+
+  .intents{display:flex; flex-wrap:wrap; gap:6px; min-height:30px}
+  .intent{display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px 8px; font-size:11.5px; flex:1 1 210px; min-width:0}
+  .intent .ic{font-size:14px}
+  .intent .nm{color:#cfd6f5; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:96px}
+  .intent .bar{flex:0 0 46px; height:4px; border-radius:3px; background:#0a0d17; overflow:hidden}
+  .intent .bar i{display:block; height:100%; background:linear-gradient(90deg,#ff9f43,#ff4d6d)}
+  .intent .txt{color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .intent .txt.aim{color:#ffb0bd; font-weight:600}
+
+  .bar{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .skill{
+    position:relative; display:flex; flex-direction:column; align-items:center; gap:1px;
+    padding:8px 6px 7px; border-radius:12px; border:1px solid var(--line);
+    background:linear-gradient(180deg,#1b2133,#141827); color:#dfe4ff; cursor:pointer;
+    font-family:inherit; transition:transform .12s, border-color .12s, opacity .12s; overflow:hidden;
+  }
+  .skill .ic{font-size:17px; line-height:1}
+  .skill .nm{font-size:12px; font-weight:600}
+  .skill .ds{font-size:9.5px; color:var(--muted); white-space:nowrap}
+  .skill .k{position:absolute; top:3px; right:5px; font-size:9px; color:#5f6a8c; border:1px solid rgba(255,255,255,.1); border-radius:4px; padding:0 3px}
+  .skill:hover:not(:disabled){transform:translateY(-2px); border-color:rgba(77,225,255,.45)}
+  .skill:disabled{opacity:.38; cursor:default}
+  .skill .cdmask{position:absolute; inset:0; background:rgba(8,10,18,.72); display:none; place-items:center; font-size:17px; font-weight:700; color:#9fb0d8}
+  .skill.cool .cdmask{display:grid}
+
+  .log{min-height:34px; font-size:11.5px; color:var(--muted); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px 10px; display:flex; flex-direction:column; gap:2px}
+  .log b{color:#dfe4ff; font-weight:600}
+  .hint{font-size:10.5px; color:#5f6a8c; text-align:center}
+
+  .overlay{position:fixed; inset:0; background:rgba(6,8,14,.82); backdrop-filter:blur(3px); display:none; place-items:center; padding:16px; z-index:10}
+  .overlay.on{display:grid}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:18px 20px; max-width:560px; width:100%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .panel h2{margin:0 0 4px; font-size:20px}
+  .panel .sub{margin:0 0 14px; color:var(--muted); font-size:12.5px}
+  .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+  .card{position:relative; display:flex; flex-direction:column; align-items:center; gap:5px; padding:14px 10px; border-radius:14px; border:1px solid var(--line); background:linear-gradient(180deg,#1c2237,#151a29); color:#e9edff; cursor:pointer; font-family:inherit; transition:transform .12s, border-color .12s}
+  .card:hover{transform:translateY(-3px); border-color:rgba(255,209,102,.6)}
+  .card .c-ic{font-size:24px}
+  .card .c-nm{font-size:12.5px; font-weight:700}
+  .card .c-ds{font-size:10.5px; color:var(--muted); line-height:1.3}
+  .card .c-key{position:absolute; top:6px; left:8px; font-size:9px; color:#5f6a8c}
+  .big{font-size:13px; color:#cfd6f5; line-height:1.6}
+  .big b{color:var(--gold)}
+  .btn{font-family:inherit; font-size:13px; padding:9px 20px; border-radius:11px; cursor:pointer; border:1px solid rgba(255,255,255,.16); color:#fff; background:linear-gradient(180deg,#2a3350,#1c2336); margin-top:12px}
+  .btn:hover{border-color:rgba(255,255,255,.35)}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="hud">
+    <div class="hud-top">
+      <span class="chip" id="floor">Этаж 1 / 5</span>
+      <span class="chip boss" id="bossName">—</span>
+      <span class="chip" id="kills">Побеждено: 0</span>
+    </div>
+    <div class="hp-row">
+      <div class="hp-outer"><div class="hp-fill" id="hpFill"></div><span class="hp-text" id="hpText">24 / 24</span></div>
+      <span class="shield-badge off" id="shieldBadge">🛡 0</span>
+    </div>
+    <div class="relics" id="relics"></div>
+  </header>
+
+  <div class="arena" id="arena"></div>
+  <div class="intents" id="intents"></div>
+  <div class="bar" id="skills"></div>
+  <div class="log" id="log"></div>
+  <div class="hint">WASD / стрелки — шаг и удар · Q — рывок · E — взрыв · R — щит · Space — ждать · мышью можно целиться</div>
+</div>
+<div class="overlay" id="overlay"></div>
+
+<script>
+/* ============================================================
+   ПОДЗЕМЕЛЬЕ БОССОВ — роглайк-дуэли на сетке 11x9
+   ============================================================ */
+const W = 11, H = 9, N = W * H, FLOORS = 5;
+const idx = (x, y) => y * W + x;
+const px = i => i % W;
+const py = i => (i / W) | 0;
+const inB = (x, y) => x >= 0 && x < W && y >= 0 && y < H;
+const rnd = n => Math.floor(Math.random() * n);
+const cheb = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+const DIR4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+const DIR8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+const shuffle = a => { const r = a.slice(); for (let i = r.length - 1; i > 0; i--) { const j = rnd(i + 1); [r[i], r[j]] = [r[j], r[i]]; } return r; };
+
+let S = null;
+
+/* ---------------- реликвии ---------------- */
+const RELICS = [
+  { id: 'hp',     icon: '❤️', name: 'Стальное сердце',  desc: '+6 к максимуму HP и лечение на 6' },
+  { id: 'atk',    icon: '⚔️', name: 'Точный удар',      desc: '+1 к урону обычной атаки' },
+  { id: 'life',   icon: '🩸', name: 'Вампиризм',        desc: '+1 HP за каждого убитого' },
+  { id: 'shield', icon: '🛡️', name: 'Тяжёлый щит',      desc: 'щит поглощает 6 вместо 4' },
+  { id: 'dash',   icon: '👟', name: 'Быстрые ноги',     desc: 'рывок до 4 клеток, кулдаун 2' },
+  { id: 'burst',  icon: '💥', name: 'Осколки',          desc: 'взрыв +2 урона' },
+  { id: 'regen',  icon: '🌿', name: 'Ремонт',           desc: '+1 HP каждые 3 хода' },
+  { id: 'first',  icon: '🎯', name: 'Клинок закалён',   desc: 'первый удар по каждому врагу двойной' },
+  { id: 'cd',     icon: '⏳', name: 'Хладнокровие',     desc: 'все кулдауны на 1 меньше' },
+  { id: 'rage',   icon: '🔥', name: 'Ярость',           desc: '+1 урон, когда HP ниже половины' },
+  { id: 'thorns', icon: '🦔', name: 'Шипы',             desc: 'ударивший в упор получает 1' },
+  { id: 'second', icon: '💫', name: 'Второе дыхание',   desc: 'при HP ≤ 3 один раз за бой даёт щит 4' },
+];
+
+/* ---------------- боссы ---------------- */
+function mk(name, icon, kind, x, y, hp, dmg) {
+  return { name, icon, kind, x, y, hp, maxHp: hp, dmg, alive: true, turns: 0, intent: null, enraged: false, firstHit: false };
+}
+
+const BOSSES = {
+  twins: {
+    name: 'Близнецы-стражи',
+    make: f => {
+      const k = 1 + 0.12 * (f - 1);
+      return [
+        mk('Страж-молот', '🔨', 'hammer', 3, 1, Math.round(12 * k), 2),
+        mk('Страж-копьё', '🗡️', 'spear', 7, 1, Math.round(10 * k), 2),
+      ];
+    },
+  },
+  trickster: {
+    name: 'Костяной шутник',
+    make: f => {
+      const k = 1 + 0.12 * (f - 1);
+      return [mk('Костяной шутник', '💀', 'trickster', 5, 1, Math.round(15 * k), 2)];
+    },
+  },
+  dancer: {
+    name: 'Клинок-вихрь',
+    make: f => {
+      const k = 1 + 0.12 * (f - 1);
+      return [mk('Клинок-вихрь', '🌀', 'dancer', 5, 1, Math.round(18 * k), 2)];
+    },
+  },
+  king: {
+    name: 'Король пепла',
+    make: f => {
+      const k = 1 + 0.12 * (f - 1);
+      return [mk('Король пепла', '👑', 'king', 5, 1, Math.round(20 * k), 3)];
+    },
+  },
+  abyss: {
+    name: 'Рыцарь Бездны',
+    make: f => {
+      const k = 1 + 0.12 * (f - 1);
+      return [mk('Рыцарь Бездны', '🌑', 'abyss', 5, 1, Math.round(19 * k), 3)];
+    },
+  },
+};
+const BOSS_IDS = Object.keys(BOSSES);
+
+/* ---------------- забег ---------------- */
+function newRun() {
+  S = {
+    floor: 0, hp: 24, maxHp: 24, atk: 4, shield: 0,
+    relics: [], cd: { dash: 0, burst: 0, shield: 0 },
+    player: { x: 5, y: 7 }, enemies: [], walls: new Set(),
+    order: shuffle(BOSS_IDS), bossName: '', phase: 'fight',
+    targeting: null, dashCells: null, rewards: [], turn: 1, log: [],
+    secondUsed: false, killed: 0,
+  };
+  nextFloor();
+}
+
+function nextFloor() {
+  S.floor++;
+  if (S.floor > FLOORS) { S.phase = 'win'; refreshOverlay(); render(); return; }
+  const def = BOSSES[S.order[S.floor - 1]];
+  S.bossName = def.name;
+  S.walls = genWalls();
+  S.player = { x: 5, y: 7 };
+  S.enemies = def.make(S.floor);
+  S.shield = 0;
+  S.secondUsed = false;
+  S.turn = 1;
+  S.phase = 'fight';
+  S.targeting = null;
+  S.dashCells = null;
+  S.cd = { dash: 0, burst: 0, shield: 0 };
+  S.log = [];
+  log(`Этаж ${S.floor}: <b>${def.name}</b>`);
+  render();
+}
+
+function genWalls() {
+  const w = new Set();
+  const forbidden = new Set([idx(5, 7), idx(4, 7), idx(6, 7), idx(5, 6), idx(3, 1), idx(5, 1), idx(7, 1), idx(5, 2)]);
+  let guard = 0;
+  while (w.size < 9 && guard++ < 900) {
+    const x = 1 + rnd(W - 2), y = 1 + rnd(H - 2), i = idx(x, y);
+    if (forbidden.has(i) || w.has(i)) continue;
+    let near = 0;
+    for (const [dx, dy] of DIR8) if (inB(x + dx, y + dy) && w.has(idx(x + dx, y + dy))) near++;
+    if (near > 0) continue;
+    w.add(i);
+  }
+  return w;
+}
+
+/* ---------------- утилиты боя ---------------- */
+const relic = id => S.relics.includes(id);
+const enemyAt = (x, y) => S.enemies.find(e => e.alive && e.x === x && e.y === y) || null;
+const dashRange = () => (relic('dash') ? 4 : 3);
+const burstDmg = () => 2 + (relic('burst') ? 2 : 0);
+const shieldAmt = () => (relic('shield') ? 6 : 4);
+const cdSet = base => Math.max(1, base - (relic('cd') ? 1 : 0));
+
+function canPlayerEnter(x, y) {
+  return inB(x, y) && !S.walls.has(idx(x, y)) && !enemyAt(x, y);
+}
+function canEnemyEnter(x, y, self) {
+  if (!inB(x, y) || S.walls.has(idx(x, y))) return false;
+  if (S.player.x === x && S.player.y === y) return false;
+  return !S.enemies.some(e => e.alive && e !== self && e.x === x && e.y === y);
+}
+
+function stepToward(e, tx, ty, steps) {
+  for (let s = 0; s < steps; s++) {
+    const dx = Math.sign(tx - e.x), dy = Math.sign(ty - e.y);
+    const opts = Math.abs(tx - e.x) >= Math.abs(ty - e.y)
+      ? [[dx, 0], [0, dy], [dx, dy]]
+      : [[0, dy], [dx, 0], [dx, dy]];
+    let moved = false;
+    for (const [ax, ay] of opts) {
+      if (!ax && !ay) continue;
+      if (canEnemyEnter(e.x + ax, e.y + ay, e)) { e.x += ax; e.y += ay; moved = true; break; }
+    }
+    if (!moved) break;
+  }
+}
+
+function aimDir(e) {
+  const dx = S.player.x - e.x, dy = S.player.y - e.y;
+  return Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+}
+function rayFrom(e, dir, len) {
+  const cells = [];
+  let x = e.x + dir[0], y = e.y + dir[1];
+  for (let k = 0; k < len; k++) {
+    if (!inB(x, y) || S.walls.has(idx(x, y))) break;
+    cells.push(idx(x, y)); x += dir[0]; y += dir[1];
+  }
+  return cells;
+}
+function ortho(e) {
+  return DIR4.map(([dx, dy]) => [e.x + dx, e.y + dy])
+    .filter(([x, y]) => inB(x, y) && !S.walls.has(idx(x, y)))
+    .map(([x, y]) => idx(x, y));
+}
+function ringCells(e) {
+  return DIR8.map(([dx, dy]) => [e.x + dx, e.y + dy])
+    .filter(([x, y]) => inB(x, y) && !S.walls.has(idx(x, y)))
+    .map(([x, y]) => idx(x, y));
+}
+function rowCells(y) { const r = []; for (let x = 0; x < W; x++) if (!S.walls.has(idx(x, y))) r.push(idx(x, y)); return r; }
+function colCells(x) { const r = []; for (let y = 0; y < H; y++) if (!S.walls.has(idx(x, y))) r.push(idx(x, y)); return r; }
+/* ---------------- логи, урон, лечение ---------------- */
+function log(msg) { S.log.unshift(msg); S.log = S.log.slice(0, 3); renderLog(); }
+function heal(n) { S.hp = Math.min(S.maxHp, S.hp + n); floatCell(S.player.x, S.player.y, '+' + n, 'heal'); }
+function shake() { const a = document.getElementById('app'); a.classList.remove('shake'); void a.offsetWidth; a.classList.add('shake'); }
+
+function hurtEnemy(e, dmg) {
+  e.hp -= dmg;
+  floatCell(e.x, e.y, '-' + dmg);
+  if (e.hp <= 0) {
+    e.hp = 0; e.alive = false; e.intent = null;
+    S.killed++;
+    log(`<b>${e.name}</b> повержен!`);
+    if (relic('life')) heal(1);
+    checkEnrage();
+  }
+}
+
+function checkEnrage() {
+  const twins = S.enemies.filter(x => x.kind === 'hammer' || x.kind === 'spear');
+  if (twins.length !== 2) return;
+  const alive = twins.filter(t => t.alive);
+  if (alive.length === 1 && !alive[0].enraged) {
+    alive[0].enraged = true;
+    alive[0].dmg += 2;
+    log(`<b>${alive[0].name}</b> впадает в ярость!`);
+  }
+}
+
+function damagePlayer(n, src) {
+  let blocked = 0;
+  if (S.shield > 0) {
+    blocked = Math.min(S.shield, n);
+    S.shield -= blocked;
+    n -= blocked;
+  }
+  if (n > 0) {
+    S.hp -= n;
+    floatCell(S.player.x, S.player.y, '-' + n);
+    shake();
+  }
+  if (relic('second') && !S.secondUsed && S.hp > 0 && S.hp <= 3) {
+    S.secondUsed = true;
+    S.shield += 4;
+    log('💫 <b>Второе дыхание</b>: щит 4');
+  }
+  if (S.hp < 0) S.hp = 0;
+}
+
+function melee(e, dmg) {
+  damagePlayer(dmg, e);
+  if (relic('thorns') && e.alive) hurtEnemy(e, 1);
+  log(`${e.icon} <b>${e.name}</b> бьёт в упор: ${dmg}`);
+}
+
+function setIntent(e, label, cells, dmg, extra) {
+  e.intent = Object.assign({ label, cells, dmg }, extra || {});
+}
+
+/* ---------------- действия игрока ---------------- */
+function attackEnemy(e) {
+  let dmg = S.atk;
+  if (relic('first') && !e.firstHit) { dmg *= 2; e.firstHit = true; log('🎯 Первый удар — двойной!'); }
+  if (relic('rage') && S.hp <= S.maxHp / 2) dmg += 1;
+  hurtEnemy(e, dmg);
+  endPlayerTurn();
+}
+
+function tryMove(dx, dy) {
+  const nx = S.player.x + dx, ny = S.player.y + dy;
+  if (!inB(nx, ny)) return;
+  const e = enemyAt(nx, ny);
+  if (e) { attackEnemy(e); return; }
+  if (S.walls.has(idx(nx, ny))) return;
+  S.player.x = nx; S.player.y = ny;
+  endPlayerTurn();
+}
+
+function stepTowardClick(tx, ty) {
+  const start = idx(S.player.x, S.player.y), goal = idx(tx, ty);
+  const prev = new Map([[start, null]]);
+  const q = [start];
+  while (q.length) {
+    const cur = q.shift();
+    if (cur === goal) break;
+    const x = px(cur), y = py(cur);
+    for (const [dx, dy] of DIR8) {
+      const nx = x + dx, ny = y + dy;
+      if (!inB(nx, ny)) continue;
+      const ni = idx(nx, ny);
+      if (prev.has(ni)) continue;
+      if (ni !== goal && !canPlayerEnter(nx, ny)) continue;
+      if (ni === goal && !canPlayerEnter(nx, ny) && !enemyAt(nx, ny)) continue;
+      prev.set(ni, cur);
+      q.push(ni);
+    }
+  }
+  if (!prev.has(goal)) return;
+  let cur = goal;
+  while (prev.get(cur) !== start) {
+    const p = prev.get(cur);
+    if (p === null || p === undefined) return;
+    cur = p;
+  }
+  if (cur === start) return;
+  const nx = px(cur), ny = py(cur);
+  if (enemyAt(nx, ny)) return;
+  if (!canPlayerEnter(nx, ny)) return;
+  S.player.x = nx; S.player.y = ny;
+  endPlayerTurn();
+}
+
+function waitTurn() { endPlayerTurn(); }
+
+/* ---------------- скилы ---------------- */
+function beginDash() {
+  if (S.phase !== 'fight' || S.cd.dash > 0) return;
+  if (S.targeting === 'dash') { cancelTarget(); return; }
+  const map = new Map();
+  for (const [dx, dy] of DIR4) {
+    for (let d = 1; d <= dashRange(); d++) {
+      const nx = S.player.x + dx * d, ny = S.player.y + dy * d;
+      if (!inB(nx, ny) || S.walls.has(idx(nx, ny)) || enemyAt(nx, ny)) break;
+      map.set(idx(nx, ny), d);
+    }
+  }
+  if (!map.size) { log('Негде разбежаться'); return; }
+  S.targeting = 'dash';
+  S.dashCells = map;
+  log('Рывок: выберите направление (стрелки / клик), Esc — отмена');
+  render();
+}
+
+function cancelTarget() {
+  S.targeting = null;
+  S.dashCells = null;
+  render();
+}
+
+function dashInDir(dir) {
+  let best = null;
+  for (const [i, d] of S.dashCells) {
+    const dx = Math.sign(px(i) - S.player.x), dy = Math.sign(py(i) - S.player.y);
+    if (dx === dir[0] && dy === dir[1] && (!best || d > best.d)) best = { i, d };
+  }
+  if (best) doDash(best.i);
+}
+
+function doDash(i) {
+  S.player.x = px(i);
+  S.player.y = py(i);
+  S.cd.dash = cdSet(relic('dash') ? 2 : 3);
+  S.targeting = null;
+  S.dashCells = null;
+  endPlayerTurn();
+}
+
+function burstSkill() {
+  if (S.phase !== 'fight' || S.cd.burst > 0) return;
+  const targets = S.enemies.filter(e => e.alive && cheb(e, S.player) <= 1);
+  if (!targets.length) { log('Взрыв: рядом никого'); return; }
+  targets.forEach(e => hurtEnemy(e, burstDmg()));
+  S.cd.burst = cdSet(3);
+  log('💥 Взрыв вокруг');
+  endPlayerTurn();
+}
+
+function shieldSkill() {
+  if (S.phase !== 'fight' || S.cd.shield > 0) return;
+  S.shield += shieldAmt();
+  S.cd.shield = cdSet(3);
+  log(`🛡 Щит: ${S.shield}`);
+  endPlayerTurn();
+}
+
+/* ---------------- ход и фаза врагов ---------------- */
+function endPlayerTurn() {
+  if (S.phase !== 'fight') return;
+  S.targeting = null;
+  S.dashCells = null;
+  if (!S.enemies.some(e => e.alive)) { winFloor(); return; }
+  S.phase = 'enemy';
+  render();
+  if (window.__fast) enemyPhase();
+  else setTimeout(enemyPhase, 240);
+}
+
+function enemyPhase() {
+  if (!S || S.phase !== 'enemy') return;
+  for (const e of S.enemies) {
+    if (!e.alive || S.hp <= 0) continue;
+    if (e.intent) executeIntent(e);
+    else enemyThink(e);
+  }
+  if (S.hp <= 0) { die(); return; }
+  if (!S.enemies.some(e => e.alive)) { winFloor(); return; }
+  S.turn++;
+  S.shield = 0;
+  for (const k in S.cd) S.cd[k] = Math.max(0, S.cd[k] - 1);
+  if (relic('regen') && S.turn % 3 === 0) heal(1);
+  S.phase = 'fight';
+  render();
+}
+
+function executeIntent(e) {
+  const it = e.intent;
+  e.intent = null;
+  if (!it) return;
+  if (it.cells.includes(idx(S.player.x, S.player.y))) {
+    damagePlayer(it.dmg, e);
+    log(`${e.icon} <b>${e.name}</b>: ${it.label} — ${it.dmg}`);
+    if (S.hp <= 0) return;
+  }
+  if (it.charge && it.dir) moveAlong(e, it.cells);
+}
+
+function moveAlong(e, cells) {
+  for (let k = cells.length - 1; k >= 0; k--) {
+    const c = cells[k], x = px(c), y = py(c);
+    if (S.walls.has(c) || enemyAt(x, y)) continue;
+    if (x === S.player.x && y === S.player.y) continue;
+    e.x = x; e.y = y;
+    return;
+  }
+}
+
+function teleportAway(e, minD, maxD) {
+  const spots = [];
+  for (let i = 0; i < N; i++) {
+    const x = px(i), y = py(i);
+    if (!canEnemyEnter(x, y, e)) continue;
+    const d = cheb({ x, y }, S.player);
+    if (d >= minD && d <= maxD) spots.push([x, y]);
+  }
+  if (spots.length) { const [x, y] = spots[rnd(spots.length)]; e.x = x; e.y = y; }
+}
+
+function enemyThink(e) {
+  e.turns++;
+  const adj = cheb(e, S.player) === 1;
+
+  if (e.kind === 'hammer') {
+    if (adj) { melee(e, e.dmg); return; }
+    stepToward(e, S.player.x, S.player.y, 1);
+    setIntent(e, 'крестовой удар', [idx(e.x, e.y), ...ortho(e)], e.dmg);
+    return;
+  }
+  if (e.kind === 'spear') {
+    if (adj) { melee(e, e.dmg); return; }
+    stepToward(e, S.player.x, S.player.y, 2);
+    setIntent(e, 'укол копьём', rayFrom(e, aimDir(e), 3), e.dmg);
+    return;
+  }
+  if (e.kind === 'trickster') {
+    if (adj) { melee(e, e.dmg); return; }
+    teleportAway(e, 4, 8);
+    if (e.hp < e.maxHp / 2) {
+      const cells = [...new Set([...rowCells(S.player.y), ...colCells(S.player.x)])];
+      setIntent(e, 'двойной луч', cells, e.dmg);
+    } else {
+      const cells = rnd(2) === 0 ? rowCells(S.player.y) : colCells(S.player.x);
+      setIntent(e, 'луч', cells, e.dmg);
+    }
+    return;
+  }
+  if (e.kind === 'dancer') {
+    if (adj && e.turns % 4 !== 0) { melee(e, e.dmg); return; }
+    if (e.turns % 4 === 0) {
+      stepToward(e, S.player.x, S.player.y, 1);
+      setIntent(e, 'рывок клинка', rayFrom(e, aimDir(e), 6), e.dmg + 2);
+      return;
+    }
+    stepToward(e, S.player.x, S.player.y, 1);
+    if (cheb(e, S.player) === 1) { melee(e, e.dmg); return; }
+    setIntent(e, 'вихрь', ringCells(e), e.dmg);
+    return;
+  }
+  if (e.kind === 'king') {
+    const extra = e.hp < e.maxHp / 2 ? 1 : 0;
+    if (adj) { melee(e, e.dmg + extra); return; }
+    if (e.turns % 3 === 0) {
+      setIntent(e, 'огненная волна', rowCells(S.player.y), e.dmg + 2);
+      return;
+    }
+    stepToward(e, S.player.x, S.player.y, 2);
+    if (cheb(e, S.player) === 1) { melee(e, e.dmg + extra); return; }
+    setIntent(e, 'огненный выпад', rayFrom(e, aimDir(e), 2), e.dmg);
+    return;
+  }
+  if (e.kind === 'abyss') {
+    if (adj) { melee(e, e.dmg); return; }
+    if (e.turns % 2 === 0) {
+      const dir = aimDir(e);
+      setIntent(e, 'прыжок из тьмы', rayFrom(e, dir, 4), e.dmg + 1, { dir, charge: true });
+      return;
+    }
+    stepToward(e, S.player.x, S.player.y, 1);
+    setIntent(e, 'тёмный выпад', rayFrom(e, aimDir(e), 2), e.dmg);
+  }
+}
+
+/* ---------------- итоги боя ---------------- */
+function die() {
+  S.phase = 'dead';
+  S.targeting = null;
+  refreshOverlay();
+  render();
+}
+
+function winFloor() {
+  S.hp = Math.min(S.maxHp, S.hp + Math.round(S.maxHp * 0.3));
+  S.targeting = null;
+  if (S.floor >= FLOORS) { S.phase = 'win'; refreshOverlay(); render(); return; }
+  S.phase = 'reward';
+  const pool = RELICS.filter(r => !S.relics.includes(r.id));
+  S.rewards = shuffle(pool).slice(0, 3);
+  refreshOverlay();
+  render();
+}
+
+function takeReward(i) {
+  if (S.phase !== 'reward' || !S.rewards[i]) return;
+  const r = S.rewards[i];
+  S.relics.push(r.id);
+  if (r.id === 'hp') { S.maxHp += 6; S.hp += 6; }
+  if (r.id === 'atk') S.atk += 1;
+  S.rewards = [];
+  nextFloor();
+}
+/* ============================================================
+   ОТРИСОВКА
+   ============================================================ */
+const cellEls = [];
+
+function buildArena() {
+  const arena = document.getElementById('arena');
+  for (let i = 0; i < N; i++) {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.innerHTML = '<span class="g"></span><span class="hpbar"><i></i></span><span class="fx"></span>';
+    el.addEventListener('click', () => onCell(i));
+    arena.appendChild(el);
+    cellEls.push({
+      el,
+      g: el.querySelector('.g'),
+      bar: el.querySelector('.hpbar'),
+      fill: el.querySelector('.hpbar i'),
+      fx: el.querySelector('.fx'),
+    });
+  }
+}
+
+function floatCell(x, y, text, cls) {
+  const c = cellEls[idx(x, y)];
+  if (!c) return;
+  c.fx.textContent = text;
+  c.fx.className = 'fx show ' + (cls || '');
+  clearTimeout(c._t);
+  c._t = setTimeout(() => { c.fx.className = 'fx ' + (cls || ''); }, 720);
+}
+
+function render() {
+  if (!S) return;
+
+  document.getElementById('floor').textContent = `Этаж ${Math.min(S.floor, FLOORS)} / ${FLOORS}`;
+  document.getElementById('bossName').textContent = S.bossName || '—';
+  document.getElementById('kills').textContent = `Побеждено: ${S.killed}`;
+
+  const pct = Math.max(0, (S.hp / S.maxHp) * 100);
+  const fill = document.getElementById('hpFill');
+  fill.style.width = pct + '%';
+  fill.classList.toggle('low', pct <= 35);
+  document.getElementById('hpText').textContent = `${Math.max(0, S.hp)} / ${S.maxHp}`;
+
+  const sb = document.getElementById('shieldBadge');
+  sb.textContent = '🛡 ' + S.shield;
+  sb.classList.toggle('off', S.shield <= 0);
+
+  const rel = document.getElementById('relics');
+  rel.innerHTML = S.relics.map(id => {
+    const r = RELICS.find(x => x.id === id);
+    return `<span class="relic" title="${r.name}: ${r.desc}">${r.icon}</span>`;
+  }).join('');
+
+  const danger = new Set();
+  for (const e of S.enemies) if (e.alive && e.intent) for (const c of e.intent.cells) danger.add(c);
+
+  for (let i = 0; i < N; i++) {
+    const c = cellEls[i], x = px(i), y = py(i);
+    const e = enemyAt(x, y);
+    const isP = S.player.x === x && S.player.y === y;
+    let cls = 'cell';
+    if (S.walls.has(i)) cls += ' wall';
+    if (danger.has(i)) cls += ' danger';
+    if (S.targeting === 'dash' && S.dashCells.has(i)) cls += ' dash';
+    if (isP) cls += ' player';
+    if (e) cls += ' enemy';
+    if (e && e.enraged) cls += ' enraged';
+    c.el.className = cls;
+    c.g.textContent = isP ? '🤺' : (e ? e.icon : '');
+    if (e) {
+      c.bar.style.display = 'block';
+      c.fill.style.width = Math.max(0, (e.hp / e.maxHp) * 100) + '%';
+    } else {
+      c.bar.style.display = 'none';
+    }
+  }
+
+  renderIntents();
+  renderSkills();
+  renderLog();
+  refreshOverlay();
+}
+
+function renderIntents() {
+  const wrap = document.getElementById('intents');
+  wrap.innerHTML = '';
+  S.enemies.filter(e => e.alive).forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'intent';
+    const hp = Math.max(0, (e.hp / e.maxHp) * 100);
+    row.innerHTML =
+      `<span class="ic">${e.icon}</span>` +
+      `<span class="nm">${e.name}${e.enraged ? ' 🔥' : ''}</span>` +
+      `<span class="bar"><i style="width:${hp}%"></i></span>` +
+      `<span class="txt ${e.intent ? 'aim' : ''}">${e.intent ? e.intent.label + ' · ' + e.intent.dmg : '—'}</span>`;
+    wrap.appendChild(row);
+  });
+}
+
+const SKILL_DEFS = [
+  { k: 'dash', icon: '👟', name: 'Рывок', key: 'Q', ds: () => `до ${dashRange()} кл.` },
+  { k: 'burst', icon: '💥', name: 'Взрыв', key: 'E', ds: () => `${burstDmg()} урона` },
+  { k: 'shield', icon: '🛡', name: 'Щит', key: 'R', ds: () => `блок ${shieldAmt()}` },
+];
+
+function renderSkills() {
+  const bar = document.getElementById('skills');
+  bar.innerHTML = '';
+  SKILL_DEFS.forEach(d => {
+    const cd = S.cd[d.k];
+    const b = document.createElement('button');
+    b.className = 'skill' + (cd > 0 ? ' cool' : '');
+    b.disabled = S.phase !== 'fight' || cd > 0;
+    b.innerHTML =
+      `<span class="ic">${d.icon}</span><span class="nm">${d.name}</span>` +
+      `<span class="ds">${d.ds()}</span><span class="k">${d.key}</span>` +
+      `<span class="cdmask">${cd > 0 ? cd : ''}</span>`;
+    b.onclick = () => ({ dash: beginDash, burst: burstSkill, shield: shieldSkill }[d.k])();
+    bar.appendChild(b);
+  });
+}
+
+function renderLog() {
+  if (!S) return;
+  document.getElementById('log').innerHTML = S.log.map(m => `<div>${m}</div>`).join('');
+}
+
+function refreshOverlay() {
+  const ov = document.getElementById('overlay');
+  if (!S) return;
+
+  if (S.phase === 'reward') {
+    ov.className = 'overlay on';
+    ov.innerHTML = `<div class="panel">
+      <h2>Этаж ${S.floor} пройден</h2>
+      <p class="sub">Выберите реликвию — клавиши 1, 2, 3</p>
+      <div class="cards">${S.rewards.map((r, i) => `
+        <button class="card" data-r="${i}">
+          <span class="c-key">${i + 1}</span>
+          <span class="c-ic">${r.icon}</span>
+          <span class="c-nm">${r.name}</span>
+          <span class="c-ds">${r.desc}</span>
+        </button>`).join('')}</div>
+    </div>`;
+    ov.querySelectorAll('.card').forEach(b => { b.onclick = () => takeReward(+b.dataset.r); });
+    return;
+  }
+  if (S.phase === 'dead' || S.phase === 'win') {
+    const win = S.phase === 'win';
+    ov.className = 'overlay on';
+    ov.innerHTML = `<div class="panel">
+      <h2>${win ? 'Подземелье пройдено! 🏆' : 'Вы погибли'}</h2>
+      <p class="sub">${win ? `Все ${FLOORS} боссов повержены` : `Этаж ${Math.min(S.floor, FLOORS)} из ${FLOORS}`}</p>
+      <p class="big">Повержено врагов: <b>${S.killed}</b><br>Реликвий собрано: <b>${S.relics.length}</b></p>
+      <button class="btn" id="again">Новый забег — Enter</button>
+    </div>`;
+    ov.querySelector('#again').onclick = newRun;
+    return;
+  }
+  ov.className = 'overlay';
+  ov.innerHTML = '';
+}
+
+/* ============================================================
+   ВВОД
+   ============================================================ */
+function onCell(i) {
+  if (!S || S.phase !== 'fight') return;
+  if (S.targeting === 'dash') {
+    if (S.dashCells.has(i)) doDash(i); else cancelTarget();
+    return;
+  }
+  if (S.walls.has(i)) return;
+  const x = px(i), y = py(i);
+  const e = enemyAt(x, y);
+  if (e) {
+    if (cheb(e, S.player) === 1) attackEnemy(e);
+    else stepTowardClick(x, y);
+    return;
+  }
+  if (cheb({ x, y }, S.player) === 1) {
+    S.player.x = x; S.player.y = y;
+    endPlayerTurn();
+    return;
+  }
+  stepTowardClick(x, y);
+}
+
+const MOVE_KEYS = {
+  arrowup: [0, -1], w: [0, -1], ц: [0, -1],
+  arrowdown: [0, 1], s: [0, 1], ы: [0, 1],
+  arrowleft: [-1, 0], a: [-1, 0], ф: [-1, 0],
+  arrowright: [1, 0], d: [1, 0], в: [1, 0],
+};
+
+window.addEventListener('keydown', ev => {
+  if (!S) return;
+  const k = ev.key.toLowerCase();
+  if (k.startsWith('arrow') || k === ' ') ev.preventDefault();
+
+  if (S.phase === 'reward') {
+    const n = parseInt(k, 10);
+    if (n >= 1 && n <= S.rewards.length) takeReward(n - 1);
+    return;
+  }
+  if (S.phase === 'dead' || S.phase === 'win') {
+    if (k === 'enter' || k === ' ') newRun();
+    return;
+  }
+  if (S.phase !== 'fight') return;
+
+  if (S.targeting === 'dash') {
+    if (k === 'escape' || k === 'q') { cancelTarget(); return; }
+    const dir = MOVE_KEYS[k];
+    if (dir) dashInDir(dir);
+    return;
+  }
+
+  const dir = MOVE_KEYS[k];
+  if (dir) { tryMove(dir[0], dir[1]); return; }
+
+  if (k === ' ' || k === 'x') waitTurn();
+  else if (k === 'q' || k === '1') beginDash();
+  else if (k === 'e' || k === '2') burstSkill();
+  else if (k === 'r' || k === '3') shieldSkill();
+});
+
+/* ============================================================
+   СТАРТ
+   ============================================================ */
+buildArena();
+newRun();
+window.__dbg = () => S;
+</script>
+</body>
+</html>

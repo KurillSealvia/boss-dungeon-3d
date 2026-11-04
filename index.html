@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Крестики-нолики со скилами</title>
+<style>
+  :root{
+    --bg1:#0f1220; --bg2:#1b1030;
+    --card:#151a2e;
+    --x:#38e1ff; --o:#ff5da2; --gold:#ffd166;
+    --line:rgba(255,255,255,.08);
+    --muted:#8b93b5;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; display:grid; place-items:center; padding:24px;
+    background:
+      radial-gradient(900px 500px at 15% -10%, #241a52, transparent),
+      linear-gradient(160deg, var(--bg1), var(--bg2));
+    color:#eef1ff; font:16px/1.4 "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{width:min(440px,100%); display:flex; flex-direction:column; gap:14px; align-items:center}
+  h1{font-size:22px; margin:0; text-align:center; font-weight:700}
+  h1 span{background:linear-gradient(90deg,var(--x),var(--o)); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .score{display:flex; gap:16px; font-size:14px; color:var(--muted)}
+  .score b{color:#fff; font-size:15px}
+  .score .x b{color:var(--x)}
+  .score .o b{color:var(--o)}
+
+  .status{min-height:46px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:3px; font-size:15px}
+  .status .note{font-size:13px; color:var(--gold)}
+  .m-x{color:var(--x)} .m-o{color:var(--o)}
+
+  .board{display:grid; grid-template-columns:repeat(3,96px); grid-auto-rows:96px; gap:9px}
+  .cell{
+    border:1px solid var(--line); border-radius:16px; padding:0;
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+    color:#fff; font-size:50px; line-height:1; font-weight:700;
+    display:grid; place-items:center; cursor:pointer;
+    transition:transform .15s, border-color .15s, box-shadow .15s;
+    font-family:"Segoe UI Symbol","Segoe UI",system-ui,sans-serif;
+  }
+  .cell:hover:not(.mark-x):not(.mark-o){border-color:rgba(255,255,255,.25); transform:translateY(-2px)}
+  .cell.mark-x{color:var(--x); text-shadow:0 0 22px rgba(56,225,255,.45); cursor:default}
+  .cell.mark-o{color:var(--o); text-shadow:0 0 22px rgba(255,93,162,.45); cursor:default}
+  .cell.targetable{border-color:var(--gold); box-shadow:inset 0 0 0 2px rgba(255,209,102,.35), 0 0 18px rgba(255,209,102,.25); animation:pulse 1.1s infinite}
+  .cell.picked{box-shadow:inset 0 0 0 2px var(--gold), 0 0 24px rgba(255,209,102,.5)}
+  .cell.win{background:linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.06)); animation:pop .5s}
+  @keyframes pulse{50%{box-shadow:inset 0 0 0 2px rgba(255,209,102,.6), 0 0 26px rgba(255,209,102,.4)}}
+  @keyframes pop{50%{transform:scale(1.06)}}
+
+  .skills{width:100%; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px}
+  .skills-title{font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); margin-bottom:8px}
+  .skill-row{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .skill{
+    display:flex; flex-direction:column; align-items:center; gap:3px; padding:9px 5px;
+    border:1px solid var(--line); border-radius:13px; background:rgba(255,255,255,.03);
+    color:#dfe4ff; cursor:pointer; font-family:inherit;
+    transition:transform .15s, border-color .15s, box-shadow .15s, opacity .15s;
+  }
+  .skill .ic{font-size:19px; line-height:1}
+  .skill .nm{font-size:12.5px; font-weight:600}
+  .skill .nm small{color:var(--gold); font-weight:700}
+  .skill .dsc{font-size:10px; color:var(--muted); text-align:center; line-height:1.15}
+  .skill:hover:not(:disabled){border-color:rgba(255,209,102,.55); transform:translateY(-2px)}
+  .skill.active{border-color:var(--gold); box-shadow:0 0 16px rgba(255,209,102,.35)}
+  .skill:disabled{opacity:.32; cursor:default}
+
+  .actions{display:flex; align-items:center; gap:14px}
+  .btn{
+    font-family:inherit; font-size:14px; padding:10px 20px; border-radius:12px; cursor:pointer;
+    border:1px solid rgba(255,255,255,.16); color:#fff;
+    background:linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.05));
+    transition:transform .15s, border-color .15s;
+  }
+  .btn:hover{transform:translateY(-2px); border-color:rgba(255,255,255,.35)}
+  .link{background:none; border:0; color:var(--muted); font:inherit; font-size:12.5px; cursor:pointer; padding:4px}
+  .link:hover{color:#fff; text-decoration:underline}
+
+  .hint{margin:0; font-size:11.5px; line-height:1.5; color:var(--muted); text-align:center; max-width:420px}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Крестики-нолики <span>со скилами</span></h1>
+
+  <div class="score">
+    <span class="x">✕ <b id="scoreX">0</b></span>
+    <span>Ничьи <b id="scoreD">0</b></span>
+    <span class="o">◯ <b id="scoreO">0</b></span>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div id="board" class="board"></div>
+
+  <div class="skills">
+    <div class="skills-title">Скилы игрока <span id="skillOwner"></span></div>
+    <div class="skill-row" id="skillRow"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="reset">Новая игра</button>
+    <button class="link" id="resetScore">сбросить счёт</button>
+  </div>
+
+  <p class="hint">
+    💥 Бомба — убрать фишку соперника · 🔄 Обмен — поменять две фишки местами ·
+    ⛔ Блок — соперник пропускает ход. Каждый скил срабатывает 1 раз за игру
+    и заменяет собой обычный ход.
+  </p>
+</div>
+
+<script>
+const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const GLYPH = { X: '✕', O: '◯' };
+
+const statusEl = document.getElementById('status');
+const skillRow = document.getElementById('skillRow');
+const skillOwner = document.getElementById('skillOwner');
+const scoreX = document.getElementById('scoreX');
+const scoreO = document.getElementById('scoreO');
+const scoreD = document.getElementById('scoreD');
+
+const cells = [];
+for (let i = 0; i < 9; i++) {
+  const btn = document.createElement('button');
+  btn.className = 'cell';
+  btn.addEventListener('click', () => onClick(i));
+  document.getElementById('board').appendChild(btn);
+  cells.push(btn);
+}
+
+let board, current, skills, frozen, over, targeting, swapFirst, note, winLine;
+const score = { X: 0, O: 0, D: 0 };
+
+const other = p => (p === 'X' ? 'O' : 'X');
+const mark = p => `<b class="m-${p.toLowerCase()}">${GLYPH[p]}</b>`;
+
+function newGame() {
+  board = Array(9).fill(null);
+  current = 'X';
+  over = false;
+  targeting = null;
+  swapFirst = null;
+  note = '';
+  winLine = null;
+  skills = { X: { bomb: 1, swap: 1, freeze: 1 }, O: { bomb: 1, swap: 1, freeze: 1 } };
+  frozen = { X: false, O: false };
+  render();
+}
+
+function updateScore() {
+  scoreX.textContent = score.X;
+  scoreO.textContent = score.O;
+  scoreD.textContent = score.D;
+}
+
+function render() {
+  cells.forEach((el, i) => {
+    const v = board[i];
+    el.className = 'cell' + (v ? ' mark-' + v.toLowerCase() : '');
+    if (winLine && winLine.includes(i)) el.classList.add('win');
+
+    if (targeting === 'bomb' && v && v !== current) el.classList.add('targetable');
+    if (targeting === 'swap' && v) el.classList.add('targetable');
+    if (targeting === 'swap' && swapFirst === i) el.classList.add('picked');
+
+    el.textContent = v ? GLYPH[v] : '';
+    el.disabled = over;
+  });
+
+  renderSkills();
+
+  if (!over) {
+    statusEl.innerHTML =
+      (note ? `<span class="note">${note}</span>` : '') +
+      `<span>Ходят ${mark(current)}</span>`;
+  }
+}
+
+const SKILL_DEFS = [
+  { key: 'bomb',   icon: '💥', name: 'Бомба', desc: 'убрать фишку соперника' },
+  { key: 'swap',   icon: '🔄', name: 'Обмен', desc: 'поменять две фишки' },
+  { key: 'freeze', icon: '⛔', name: 'Блок',  desc: 'соперник пропустит ход' },
+];
+
+function renderSkills() {
+  skillOwner.innerHTML = `(${mark(current)})`;
+  skillRow.innerHTML = '';
+
+  SKILL_DEFS.forEach(def => {
+    const btn = document.createElement('button');
+    const left = skills[current][def.key];
+    btn.className = 'skill' + (targeting === def.key ? ' active' : '');
+    btn.disabled = over || left <= 0 || (targeting !== null && targeting !== def.key);
+    btn.innerHTML =
+      `<span class="ic">${def.icon}</span>` +
+      `<span class="nm">${def.name} <small>×${left}</small></span>` +
+      `<span class="dsc">${def.desc}</span>`;
+    btn.addEventListener('click', () => activateSkill(def.key));
+    skillRow.appendChild(btn);
+  });
+}
+
+function activateSkill(key) {
+  if (over) return;
+
+  // повторный клик по активному скилу — отмена
+  if (targeting === key) {
+    targeting = null;
+    swapFirst = null;
+    note = '';
+    render();
+    return;
+  }
+  if (targeting) return;
+  if (skills[current][key] <= 0) return;
+
+  if (key === 'bomb' && !board.some(v => v && v !== current)) {
+    note = 'У соперника пока нет фишек на поле';
+    render();
+    return;
+  }
+  if (key === 'swap' && board.filter(Boolean).length < 2) {
+    note = 'Для обмена нужно минимум две фишки';
+    render();
+    return;
+  }
+
+  if (key === 'freeze') {
+    skills[current].freeze = 0;
+    frozen[other(current)] = true;
+    note = '⛔ Блок!';
+    endTurn();
+    return;
+  }
+
+  targeting = key;
+  swapFirst = null;
+  note = key === 'bomb'
+    ? 'Выберите фишку соперника'
+    : 'Выберите две фишки по очереди';
+  render();
+}
+
+function onClick(i) {
+  if (over) return;
+
+  if (targeting === 'bomb') {
+    if (!board[i] || board[i] === current) return;
+    board[i] = null;
+    skills[current].bomb = 0;
+    targeting = null;
+    note = '💥 Бомба!';
+    endTurn();
+    return;
+  }
+
+  if (targeting === 'swap') {
+    if (!board[i]) return;
+    if (swapFirst === null) {
+      swapFirst = i;
+      render();
+      return;
+    }
+    if (swapFirst === i) {
+      swapFirst = null;
+      render();
+      return;
+    }
+    const a = swapFirst;
+    [board[a], board[i]] = [board[i], board[a]];
+    skills[current].swap = 0;
+    targeting = null;
+    swapFirst = null;
+    note = '🔄 Обмен!';
+    endTurn();
+    return;
+  }
+
+  if (board[i]) return;
+  note = '';
+  board[i] = current;
+  endTurn();
+}
+
+function winnerOf(b) {
+  for (const [a, c, d] of WINS) {
+    if (b[a] && b[a] === b[c] && b[a] === b[d]) return { p: b[a], line: [a, c, d] };
+  }
+  return null;
+}
+
+function endTurn() {
+  targeting = null;
+  swapFirst = null;
+
+  const w = winnerOf(board);
+  if (w) {
+    over = true;
+    winLine = w.line;
+    score[w.p]++;
+    updateScore();
+    statusEl.innerHTML = `<span>Победили ${mark(w.p)}! 🎉</span>`;
+    render();
+    return;
+  }
+  if (board.every(Boolean)) {
+    over = true;
+    score.D++;
+    updateScore();
+    statusEl.innerHTML = '<span>Ничья 🤝</span>';
+    render();
+    return;
+  }
+
+  const next = other(current);
+  if (frozen[next]) {
+    frozen[next] = false;
+    note = (note ? note + ' ' : '') + `⛔ ${mark(next)} пропускает ход.`;
+  } else {
+    current = next;
+  }
+  render();
+}
+
+document.getElementById('reset').addEventListener('click', newGame);
+document.getElementById('resetScore').addEventListener('click', () => {
+  score.X = score.O = score.D = 0;
+  updateScore();
+});
+
+newGame();
+</script>
+</body>
+</html>
